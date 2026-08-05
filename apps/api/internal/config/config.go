@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -67,6 +68,12 @@ type DatabaseConfig struct {
 type ServerConfig struct {
 	Port string
 	Env  string
+	// AllowedOrigins is the CORS allow-list. Browsers preflight any
+	// request carrying a custom header (the FE sends X-Company-Slug on
+	// every call), so an origin missing here fails as a 403 on OPTIONS
+	// before the handler is ever reached. Override per deployment with
+	// CORS_ALLOWED_ORIGINS rather than editing the router.
+	AllowedOrigins []string
 }
 
 type SecurityConfig struct {
@@ -128,6 +135,19 @@ func Load() *Config {
 		Server: ServerConfig{
 			Port: getEnv("SERVER_PORT", "8080"),
 			Env:  getEnv("ENV", "development"),
+			AllowedOrigins: getEnvList("CORS_ALLOWED_ORIGINS", []string{
+				// MPP frontend (apps/web dev server and production build).
+				"http://localhost:8002",
+				"http://127.0.0.1:8002",
+				// Skeleton defaults, kept so existing clients keep working.
+				"http://localhost:3000",
+				"http://localhost:3001",
+				"http://localhost:5173",
+				"http://localhost:8081",
+				"https://app.tuai.id",
+				"https://jesuit.venturo.pro",
+				"https://skeleton.venturo.id",
+			}),
 		},
 		Security: SecurityConfig{
 			EmailVerificationRequired: getEnvBool("EMAIL_VERIFICATION_REQUIRED", true),
@@ -192,6 +212,28 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// getEnvList reads a comma-separated env var, trimming blanks. An unset
+// or empty value keeps the default rather than yielding an empty list —
+// an empty CORS allow-list would reject every browser silently.
+func getEnvList(key string, defaultValue []string) []string {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return defaultValue
+	}
+
+	out := make([]string, 0, len(defaultValue))
+	for _, part := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return defaultValue
+	}
+
+	return out
 }
 
 func getEnvBool(key string, defaultValue bool) bool {

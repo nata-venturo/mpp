@@ -69,15 +69,25 @@ func Setup(router *gin.Engine, db *pgxpool.Pool, cfg *config.Config) {
 	// Recovery middleware with Zap (handles panics)
 	router.Use(ginzap.RecoveryWithZap(log, true))
 
-	// CORS middleware configuration
+	// CORS middleware configuration.
+	//
+	// Every header the frontend actually sends must be listed in
+	// AllowHeaders: a browser preflights any request carrying a custom
+	// header, and an omission surfaces as a 403 on the OPTIONS call —
+	// before the handler runs, so the route itself looks broken.
+	// X-Company-Slug rides on every FE request; X-API-Key on kiosk/TV ones.
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://localhost:3001", "http://localhost:8081", "https://app.tuai.id", "https://jesuit.venturo.pro", "https://skeleton.venturo.id"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Key"},
+		AllowOrigins: cfg.Server.AllowedOrigins,
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{
+			"Origin", "Content-Type", "Accept",
+			"Authorization", "X-API-Key", "X-Company-Slug", "X-Client-Slug",
+		},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+	log.Info("CORS configured", zap.Strings("allowed_origins", cfg.Server.AllowedOrigins))
 
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
