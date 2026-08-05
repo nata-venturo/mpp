@@ -17,6 +17,22 @@ type Config struct {
 	Redis    RedisConfig
 	GCS      GCSConfig
 	Firebase FirebaseConfig
+	MPP      MPPConfig
+}
+
+// MPPConfig holds MPP-domain settings. One MPP building = one company,
+// so public (unauthenticated) MPP reads resolve their tenant from
+// CompanyID rather than from a request header.
+//
+// ponytail: core.companies has no slug column and nothing reads
+// X-Company-Slug server-side yet. Add companies.slug + a lookup
+// middleware when a second building actually exists.
+type MPPConfig struct {
+	CompanyID string
+	LocalTZ   string
+	// Location is the operating-day timezone. Storage stays UTC; this only
+	// decides which calendar day a booking/queue number belongs to.
+	Location *time.Location
 }
 
 type GCSConfig struct {
@@ -91,6 +107,15 @@ type RedisConfig struct {
 }
 
 func Load() *Config {
+	mppTZ := getEnv("MPP_LOCAL_TZ", "Asia/Jakarta")
+	loc, err := time.LoadLocation(mppTZ)
+	if err != nil {
+		// Windows/scratch containers often ship without tzdata. WIB is the
+		// default operating zone, so fall back to it rather than silently
+		// running the whole queue domain in UTC.
+		loc = time.FixedZone("WIB", 7*60*60)
+	}
+
 	return &Config{
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
@@ -139,6 +164,11 @@ func Load() *Config {
 		Firebase: FirebaseConfig{
 			ProjectID:       getEnv("FIREBASE_PROJECT_ID", ""),
 			CredentialsJSON: getEnv("FIREBASE_CREDENTIALS_JSON", ""),
+		},
+		MPP: MPPConfig{
+			CompanyID: getEnv("MPP_COMPANY_ID", "a1000000-0000-0000-0000-000000000001"),
+			LocalTZ:   mppTZ,
+			Location:  loc,
 		},
 	}
 }
