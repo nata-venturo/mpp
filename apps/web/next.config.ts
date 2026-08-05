@@ -22,11 +22,22 @@ const CSP_REPORT_ONLY = [
   "frame-ancestors 'none'",
 ].join('; ');
 
-const SECURITY_HEADERS = [
+/**
+ * Header keamanan bersama. `cameraPolicy` dibuat parameter karena satu-
+ * satunya bagian aplikasi yang butuh kamera adalah pemindai QR di kiosk.
+ *
+ * `camera=()` berarti "tidak untuk origin mana pun — termasuk diri
+ * sendiri". Dokumen yang terkena policy ini TIDAK PERNAH memunculkan
+ * dialog izin: getUserMedia langsung ditolak dan console mencatat
+ * "Permissions policy violation: camera is not allowed in this document".
+ * Mengizinkan kamera lewat pengaturan situs tidak menolong, karena yang
+ * memblokir adalah dokumennya, bukan izin penggunanya.
+ */
+const securityHeaders = (cameraPolicy: string) => [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+  { key: 'Permissions-Policy', value: `${cameraPolicy}, microphone=(), geolocation=()` },
   // Aktif hanya lewat HTTPS; aman di-set selalu.
   { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
   { key: 'Content-Security-Policy-Report-Only', value: CSP_REPORT_ONLY },
@@ -39,10 +50,20 @@ const nextConfig: NextConfig = {
   // `yarn start` lokal mengeluarkan warning dan tidak memakai output-nya.
   ...(process.env.BUILD_STANDALONE === 'true' && { output: 'standalone' as const }),
   async headers() {
+    // Urutan penting: aturan kiosk harus lebih dulu, dan pola kedua
+    // sengaja MENGECUALIKAN /kiosk supaya hanya satu header
+    // Permissions-Policy yang pernah terkirim per response (dua header
+    // dengan direktif berbeda digabung browser dengan cara yang tidak
+    // bisa diandalkan).
     return [
       {
-        source: '/(.*)',
-        headers: SECURITY_HEADERS,
+        // Hanya kiosk yang memindai QR lewat kamera perangkat.
+        source: '/kiosk/:path*',
+        headers: securityHeaders('camera=(self)'),
+      },
+      {
+        source: '/:path((?!kiosk).*)',
+        headers: securityHeaders('camera=()'),
       },
     ];
   },
