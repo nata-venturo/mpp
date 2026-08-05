@@ -9,7 +9,7 @@ Notasi ID: `FR-<modul>-<nomor>`. Prioritas: **M** (must), **S** (should), **C** 
 | ID | Prioritas | Kebutuhan |
 |----|-----------|-----------|
 | FR-INST-01 | M | Admin dapat membuat/ubah/nonaktifkan instansi (nama, deskripsi, logo, jam operasional). |
-| FR-INST-02 | M | Setiap instansi punya **prefix** huruf unik untuk penomoran (mis. A, B, C). |
+| FR-INST-02 | M | Setiap instansi punya **prefix** unik untuk penomoran, 1–4 huruf (umumnya satu, mis. A, B, C). |
 | FR-INST-03 | M | Instansi punya konfigurasi mode antrean default (FIFO / Booking-prioritas). |
 | FR-INST-04 | S | Instansi dapat diatur jam buka/tutup dan hari libur (memengaruhi ketersediaan booking). |
 | FR-INST-05 | S | Nonaktifkan instansi menyembunyikannya dari kanal registrasi tanpa menghapus histori. |
@@ -87,11 +87,11 @@ Notasi ID: `FR-<modul>-<nomor>`. Prioritas: **M** (must), **S** (should), **C** 
 
 | ID | Prioritas | Kebutuhan |
 |----|-----------|-----------|
-| FR-QUE-01 | M | **Satu antrean per jenis layanan** (single stream) dengan penomoran berprefix instansi. |
+| FR-QUE-01 | M | **Satu aliran antrean per jenis layanan** (single stream) untuk pemanggilan; **penomoran berprefix instansi & berurutan per instansi/hari** (semua layanan satu instansi berbagi satu deret nomor). |
 | FR-QUE-02 | M | Nomor berikutnya dialokasikan ke **loket yang paling lama idle** (round-robin adil). |
 | FR-QUE-03 | M | Mendukung mode **FIFO** dan **Booking-prioritas** per instansi (dikonfigurasi admin). |
 | FR-QUE-04 | M | **Reset harian pukul 00:00** — penomoran kembali ke awal. |
-| FR-QUE-05 | M | Perhitungan ETA berdasarkan estimasi durasi layanan & posisi antrean. |
+| FR-QUE-05 | M | Perhitungan ETA berdasarkan estimasi durasi layanan & posisi antrean (rumus di `../02-domain/business-rules.md` BR-29). |
 | FR-QUE-06 | M | State antrean & counter nomor dikelola di Redis; perubahan disiarkan via WebSocket. |
 | FR-QUE-07 | S | Prefix & format nomor dapat dikonfigurasi (mis. `A-014`). |
 
@@ -122,8 +122,8 @@ Notasi ID: `FR-<modul>-<nomor>`. Prioritas: **M** (must), **S** (should), **C** 
 
 | ID | Prioritas | Kebutuhan |
 |----|-----------|-----------|
-| FR-SEC-01 | M | Petugas/sistem dapat menandai warga butuh layanan lanjutan; status menjadi `QUEUED_NEXT`. |
-| FR-SEC-02 | M | Warga masuk antrean layanan kedua **tanpa registrasi ulang**, membawa identitas yang sama. |
+| FR-SEC-01 | M | Petugas/sistem dapat menandai warga butuh layanan lanjutan saat `SERVING`. Antrian asal ditutup ke status `QUEUED_NEXT` (terminal; `serving_session` tetap `DONE`) dan sistem membuat **antrian anak** (`SECOND_SERVICE`, `parent_antrian_id`) langsung di `WAITING` layanan tujuan. |
+| FR-SEC-02 | M | Antrian anak masuk antrean layanan kedua **tanpa registrasi ulang**, membawa `pemohon` yang sama. |
 | FR-SEC-03 | S | Estimasi & prioritas layanan kedua mengikuti aturan instansi tujuan. |
 
 ## Modul 13 — Verifikasi Dokumen Front Office

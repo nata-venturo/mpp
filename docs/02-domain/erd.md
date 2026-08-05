@@ -62,12 +62,13 @@ erDiagram
       string name
       bool is_required
       string notes
-      int order
+      int sort
     }
     LOKET {
       uuid id PK
       uuid instansi_id FK
       string code
+      string name "nullable, e.g. Loket 1"
       string status "OPEN | CLOSED | BREAK"
       timestamp last_idle_at
       bool is_active
@@ -97,7 +98,7 @@ erDiagram
       string name
       string phone
       string email "nullable"
-      string nik "optional/hashed"
+      string nik_hash "hashed, only if service requires"
     }
     BOOKING {
       uuid id PK
@@ -109,6 +110,7 @@ erDiagram
       string qr_token "single-use"
       timestamp qr_expires_at
       string status "BOOKED | CHECKED_IN | EXPIRED | CANCELLED"
+      timestamp checked_in_at "nullable"
     }
     ANTRIAN {
       uuid id PK
@@ -117,11 +119,13 @@ erDiagram
       uuid instansi_id FK
       uuid jenis_layanan_id FK
       string nomor "e.g. A-014"
-      int nomor_seq
+      int nomor_seq "per instansi/day"
+      date queue_date
       string source "BOOKING | WALK_IN | SECOND_SERVICE"
       string status "see state machine"
       uuid loket_id FK "nullable"
       int call_count "0..3"
+      int priority "derived from queue_mode"
       bool fo_verified "nullable"
       uuid parent_antrian_id FK "nullable"
       timestamp queued_at
@@ -151,8 +155,9 @@ erDiagram
 ## Indexing notes
 
 - `antrian`: composite index on (`jenis_layanan_id`, `status`, `nomor_seq`) for the
-  waiting stream; index on (`loket_id`, `status`); unique on (`jenis_layanan_id`,
-  `nomor_seq`, day) to guarantee no duplicate numbers.
+  waiting stream (one stream per service); index on (`loket_id`, `status`); **unique on
+  (`instansi_id`, `queue_date`, `nomor_seq`)** — the number series is per-agency (shared
+  prefix), so uniqueness is per instansi/day, not per service.
 - `kuota_booking`: unique (`instansi_id`, `jenis_layanan_id`, `tanggal`).
 - `booking`: unique `qr_token`; index (`status`, `tanggal`).
 - `instansi`: unique (`company_id`, `prefix`) and (`company_id`, `slug`).

@@ -17,9 +17,23 @@ future multi-building expansion.
 
 ### `instansi` (Agency)
 An agency operating in the MPP. Owns services and lokets.
-- `id`, `company_id` (tenant), `name`, `slug`, `prefix` (single letter used in queue
-  numbers, unique per tenant), `description`, `logo_url`, `operating_hours` (JSONB),
+- `id`, `company_id` (tenant), `name`, `slug`, `prefix` (1–4 letters used in queue
+  numbers — `VARCHAR(4)`, typically a single letter; unique per tenant), `description`,
+  `logo_url`, `operating_hours` (JSONB, format below),
   `queue_mode` (`FIFO` | `BOOKING_PRIORITY`), `is_active`, audit columns.
+
+  **`operating_hours` shape** — open interval `[open, close]` per weekday (`mon`…`sun`,
+  local time `HH:MM`), plus a `holidays` list of `YYYY-MM-DD` closed dates. A missing or
+  empty weekday = closed. Drives booking availability (BR-08).
+
+  ```json
+  {
+    "mon": ["08:00", "16:00"],
+    "fri": ["08:00", "11:30"],
+    "sat": [],
+    "holidays": ["2026-08-17"]
+  }
+  ```
 
 ### `jenis_layanan` (Service)
 A specific service under an agency; carries document requirements and duration.
@@ -29,7 +43,8 @@ A specific service under an agency; carries document requirements and duration.
 
 ### `syarat_dokumen` (Document requirement)
 Document requirements attached to a service.
-- `id`, `jenis_layanan_id`, `name`, `is_required` (bool), `notes`, `order`.
+- `id`, `jenis_layanan_id`, `name`, `is_required` (bool), `notes`, `sort` (int, display
+  order — column is `sort`, not `order`, which is a SQL reserved word).
 
 ### `loket` (Counter)
 A physical service counter.
@@ -53,20 +68,21 @@ Quota per date per agency (optionally per service).
 
 ### `pemohon` (Applicant)
 The citizen. Minimal PII, deduplicated by contact where possible.
-- `id`, `name`, `phone` (WhatsApp), `email` (nullable), `nik` (optional/hashed per
-  policy), `created_at`.
+- `id`, `name`, `phone` (WhatsApp), `email` (nullable), `nik_hash` (hashed national ID,
+  only when a service requires it), `created_at`.
 
 ### `booking`
 A scheduled registration (before check-in).
 - `id`, `pemohon_id`, `instansi_id`, `jenis_layanan_id`, `tanggal`, `channel`
   (`WHATSAPP` | `WEB`), `qr_token` (single-use), `qr_expires_at`, `status`
-  (`BOOKED` | `CHECKED_IN` | `EXPIRED` | `CANCELLED`), `created_at`.
+  (`BOOKED` | `CHECKED_IN` | `EXPIRED` | `CANCELLED`), `checked_in_at` (nullable), `created_at`.
 
 ### `antrian` (Queue number / Ticket)
 The active queue item once a citizen is in line (from check-in or walk-in).
 - `id`, `booking_id` (nullable for walk-in), `pemohon_id`, `instansi_id`,
   `jenis_layanan_id`, `nomor` (formatted, e.g. `A-014`), `nomor_seq` (int per
-  service/day), `source` (`BOOKING` | `WALK_IN` | `SECOND_SERVICE`), `status`
+  **instansi/day** — numbers share the agency prefix, so the series is per-agency, not
+  per-service), `queue_date`, `source` (`BOOKING` | `WALK_IN` | `SECOND_SERVICE`), `status`
   (see state machine), `loket_id` (nullable, set on call), `call_count` (0..3),
   `priority` (derived from mode), `fo_verified` (nullable bool),
   `queued_at`, `called_at`, `served_at`, `done_at`, `parent_antrian_id`
@@ -97,7 +113,9 @@ Reuses the skeleton audit pattern (`core.audit_logs`) for sensitive MPP actions
 
 ## Redis-held runtime state (not in Postgres)
 
-- Per-service daily **number counter** (`mpp:counter:<service_id>:<yyyymmdd>`), atomic `INCR`.
+- Per-**instansi** daily **number counter** (`mpp:counter:<instansi_id>:<yyyymmdd>`), atomic
+  `INCR` — one number series per agency (prefix `A` ⇒ `A-001`, `A-002`, … across all of that
+  agency's services).
 - **Active queue** ordered set per service (waiting numbers), and current "called" per loket.
 - **Pub/sub** channels for WebSocket fan-out (see `../04-api/websocket-events.md`).
 - `loket` idle ranking mirror for fast idle-longest allocation.
