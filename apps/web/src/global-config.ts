@@ -30,4 +30,12 @@ export const CONFIG = {
   siteUrl: env.NEXT_PUBLIC_SITE_URL,
   /** Server-only: override URL API internal (k8s) untuk fetch RSC/sitemap. */
   serverApiUrl: env.API_URL,
+  /**
+   * Perangkat MPP (kiosk & TV) memakai API key ber-scope, bukan login user.
+   * Lihat src/lib/api/device-client.ts.
+   */
+  kioskApiKey: env.NEXT_PUBLIC_KIOSK_API_KEY,
+  tvApiKey: env.NEXT_PUBLIC_TV_API_KEY,
+  /** Origin WebSocket realtime; kosong -> diturunkan dari apiUrl. */
+  wsUrl: env.NEXT_PUBLIC_WS_URL,
 };

@@ -23,6 +23,14 @@ const rawEnv = {
   NEXT_PUBLIC_SITE_URL: emptyToUndefined(process.env.NEXT_PUBLIC_SITE_URL),
   NEXT_PUBLIC_ASSETS_DIR: emptyToUndefined(process.env.NEXT_PUBLIC_ASSETS_DIR),
   NEXT_PUBLIC_SHOW_COMPONENTS: emptyToUndefined(process.env.NEXT_PUBLIC_SHOW_COMPONENTS),
+  // Kunci API perangkat MPP. Kiosk dan TV TIDAK login sebagai user — mereka
+  // membawa API key ber-scope (X-API-Key) yang di-bake saat build. Kosongkan
+  // di deploy yang tidak memasang perangkat tersebut.
+  NEXT_PUBLIC_KIOSK_API_KEY: emptyToUndefined(process.env.NEXT_PUBLIC_KIOSK_API_KEY),
+  NEXT_PUBLIC_TV_API_KEY: emptyToUndefined(process.env.NEXT_PUBLIC_TV_API_KEY),
+  // Origin WebSocket (ws:// atau wss://). Kosong -> diturunkan dari
+  // NEXT_PUBLIC_API_URL, jadi cukup di-set bila realtime dilayani host lain.
+  NEXT_PUBLIC_WS_URL: emptyToUndefined(process.env.NEXT_PUBLIC_WS_URL),
   // Server-only: override URL API internal (mis. DNS service k8s) untuk
   // fetch RSC/sitemap. Tidak pernah masuk bundle client.
   API_URL: typeof window === 'undefined' ? emptyToUndefined(process.env.API_URL) : undefined,
@@ -40,6 +48,9 @@ const schema = z.object({
   NEXT_PUBLIC_SITE_URL: isProd ? z.url() : z.url().default('http://localhost:8002'),
   NEXT_PUBLIC_ASSETS_DIR: z.string().default(''),
   NEXT_PUBLIC_SHOW_COMPONENTS: z.string().default(''),
+  NEXT_PUBLIC_KIOSK_API_KEY: z.string().default(''),
+  NEXT_PUBLIC_TV_API_KEY: z.string().default(''),
+  NEXT_PUBLIC_WS_URL: z.string().default(''),
   API_URL: z.url().optional(),
   REVALIDATE_TOKEN: z.string().min(16).optional(),
 });

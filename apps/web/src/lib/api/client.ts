@@ -3,6 +3,8 @@ import ky, { HTTPError, TimeoutError } from 'ky';
 
 import { CONFIG } from 'src/global-config';
 
+import { getAccessToken, clearAccessToken } from './token-store';
+
 // ----------------------------------------------------------------------
 // Response envelope — see marketplace-be/docs/api-contract/README.md
 // { data, message, meta: { pagination? }, errors }
@@ -68,12 +70,36 @@ function getBaseUrl() {
  * options (`next: { revalidate, tags }`) to the patched fetch on the server
  * (ky >= 1.13), and browsers ignore them — one instance serves both runtimes.
  *
- * This instance is unauthenticated. When auth lands, extend it client-side:
- * `api.extend({ hooks: { beforeRequest: [attachToken], afterResponse: [refreshOn401] } })`.
+ * Hook `beforeRequest` melampirkan token staf bila ada; endpoint publik
+ * (katalog, booking, availability) tetap berfungsi tanpa token. Hook
+ * `afterResponse` membuang token yang sudah ditolak backend sehingga UI
+ * tidak terus memakai kredensial mati.
  */
 export const api = ky.create({
   baseUrl: getBaseUrl(),
   timeout: 10_000,
+  hooks: {
+    beforeRequest: [
+      ({ request }) => {
+        const token = getAccessToken();
+        if (token && !request.headers.has('Authorization')) {
+          request.headers.set('Authorization', `Bearer ${token}`);
+        }
+      },
+    ],
+    afterResponse: [
+      ({ response }) => {
+        // 401 = kredensial hilang/kedaluwarsa. Token dibuang di sini —
+        // satu tempat — supaya tidak ada layar yang menahan token mati.
+        // Redirect diserahkan ke UI (guard rute), bukan ke layer fetch,
+        // karena hook ini juga jalan untuk halaman publik.
+        if (response.status === 401 && getAccessToken()) {
+          clearAccessToken();
+        }
+        return response;
+      },
+    ],
+  },
   // Pembagian peran retry: ky me-retry di level TRANSPORT (network error /
   // 408/413/429/5xx) hanya untuk GET yang idempoten; retry level QUERY di
   // browser adalah urusan TanStack Query (default 3x). Default ky ikut
@@ -120,12 +146,8 @@ function cleanParams(params: ApiFetchOptions['params']) {
  */
 export async function apiFetch<T>(
   path: string,
-  { params, method = 'get', body, ...options }: ApiFetchOptions = {}
+  options: ApiFetchOptions = {}
 ): Promise<ApiEnvelope<T>> {
-  if (!getBaseUrl()) {
-    throw new ApiError(0, 'API URL is not configured — set NEXT_PUBLIC_API_URL in .env');
-  }
-
   if (!CONFIG.companySlug) {
     throw new ApiError(
       0,
@@ -133,8 +155,25 @@ export async function apiFetch<T>(
     );
   }
 
+  return runRequest<T>(api, path, options);
+}
+
+/**
+ * Inti request bersama: dipakai `apiFetch` (instance publik/staf) dan
+ * `deviceFetch` (instance ber-API-key). Penanganan error dijaga di SATU
+ * tempat supaya kiosk/TV memunculkan kelas error yang sama dengan web.
+ */
+export async function runRequest<T>(
+  instance: typeof api,
+  path: string,
+  { params, method = 'get', body, ...options }: ApiFetchOptions = {}
+): Promise<ApiEnvelope<T>> {
+  if (!getBaseUrl()) {
+    throw new ApiError(0, 'API URL is not configured — set NEXT_PUBLIC_API_URL in .env');
+  }
+
   try {
-    return await api<ApiEnvelope<T>>(path, {
+    return await instance<ApiEnvelope<T>>(path, {
       method,
       searchParams: cleanParams(params),
       ...(body !== undefined && { json: body }),
