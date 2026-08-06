@@ -29,7 +29,8 @@ All responses use the skeleton's envelope (the FE `ky` client unwraps it):
 ## Authentication
 
 - **JWT** (`Authorization: Bearer <token>`) for users. Claims carry `UserID`, `Email`,
-  `CompanyID` (+ super-admin flag). Obtained via `/core/v1/auth/login`.
+  `CompanyID` (+ super-admin flag). Obtained via `/core/v1/auth/signin` (body field
+  `login` = email/username, `password`).
 - **API-key** (`X-API-Key: <key>`) for unattended devices (kiosk/TV) with pre-scoped
   permissions. The auth middleware checks `X-API-Key` first, else the Bearer token.
 
@@ -40,10 +41,13 @@ All responses use the skeleton's envelope (the FE `ky` client unwraps it):
 
 ## Authorization
 
-Server-side RBAC via `resource:action` / `resource.subresource:action` permission
-strings, levels `viewer|editor|admin`, cached in Redis. See
-[`../06-security/rbac-matrix.md`](../06-security/rbac-matrix.md). Every mutating MPP
-endpoint declares a required permission.
+Server-side RBAC. Roles **store** `{"resource":"level"}` (level `viewer|editor|admin`);
+at login each level is **expanded** to a fixed `resource:action` list (viewer→`read`,
+editor→`create,read,update,delete`, admin→`+export,import,restore,approve`) and cached in
+Redis. Endpoints **check** the expanded `resource:action` string (e.g. `mpp.antrian:update`)
+by exact match. There is no verb outside that vocabulary — MPP domain actions map onto the
+CRUD verbs. See [`../06-security/rbac-matrix.md`](../06-security/rbac-matrix.md). Every
+mutating MPP endpoint declares a required permission.
 
 ## Pagination, filtering, sorting
 

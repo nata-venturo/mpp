@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -17,6 +18,22 @@ type Config struct {
 	Redis    RedisConfig
 	GCS      GCSConfig
 	Firebase FirebaseConfig
+	MPP      MPPConfig
+}
+
+// MPPConfig holds MPP-domain settings. One MPP building = one company,
+// so public (unauthenticated) MPP reads resolve their tenant from
+// CompanyID rather than from a request header.
+//
+// ponytail: core.companies has no slug column and nothing reads
+// X-Company-Slug server-side yet. Add companies.slug + a lookup
+// middleware when a second building actually exists.
+type MPPConfig struct {
+	CompanyID string
+	LocalTZ   string
+	// Location is the operating-day timezone. Storage stays UTC; this only
+	// decides which calendar day a booking/queue number belongs to.
+	Location *time.Location
 }
 
 type GCSConfig struct {
@@ -51,6 +68,12 @@ type DatabaseConfig struct {
 type ServerConfig struct {
 	Port string
 	Env  string
+	// AllowedOrigins is the CORS allow-list. Browsers preflight any
+	// request carrying a custom header (the FE sends X-Company-Slug on
+	// every call), so an origin missing here fails as a 403 on OPTIONS
+	// before the handler is ever reached. Override per deployment with
+	// CORS_ALLOWED_ORIGINS rather than editing the router.
+	AllowedOrigins []string
 }
 
 type SecurityConfig struct {
@@ -91,6 +114,15 @@ type RedisConfig struct {
 }
 
 func Load() *Config {
+	mppTZ := getEnv("MPP_LOCAL_TZ", "Asia/Jakarta")
+	loc, err := time.LoadLocation(mppTZ)
+	if err != nil {
+		// Windows/scratch containers often ship without tzdata. WIB is the
+		// default operating zone, so fall back to it rather than silently
+		// running the whole queue domain in UTC.
+		loc = time.FixedZone("WIB", 7*60*60)
+	}
+
 	return &Config{
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
@@ -103,6 +135,19 @@ func Load() *Config {
 		Server: ServerConfig{
 			Port: getEnv("SERVER_PORT", "8080"),
 			Env:  getEnv("ENV", "development"),
+			AllowedOrigins: getEnvList("CORS_ALLOWED_ORIGINS", []string{
+				// MPP frontend (apps/web dev server and production build).
+				"http://localhost:8002",
+				"http://127.0.0.1:8002",
+				// Skeleton defaults, kept so existing clients keep working.
+				"http://localhost:3000",
+				"http://localhost:3001",
+				"http://localhost:5173",
+				"http://localhost:8081",
+				"https://app.tuai.id",
+				"https://jesuit.venturo.pro",
+				"https://skeleton.venturo.id",
+			}),
 		},
 		Security: SecurityConfig{
 			EmailVerificationRequired: getEnvBool("EMAIL_VERIFICATION_REQUIRED", true),
@@ -140,6 +185,11 @@ func Load() *Config {
 			ProjectID:       getEnv("FIREBASE_PROJECT_ID", ""),
 			CredentialsJSON: getEnv("FIREBASE_CREDENTIALS_JSON", ""),
 		},
+		MPP: MPPConfig{
+			CompanyID: getEnv("MPP_COMPANY_ID", "a1000000-0000-0000-0000-000000000001"),
+			LocalTZ:   mppTZ,
+			Location:  loc,
+		},
 	}
 }
 
@@ -162,6 +212,28 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// getEnvList reads a comma-separated env var, trimming blanks. An unset
+// or empty value keeps the default rather than yielding an empty list —
+// an empty CORS allow-list would reject every browser silently.
+func getEnvList(key string, defaultValue []string) []string {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return defaultValue
+	}
+
+	out := make([]string, 0, len(defaultValue))
+	for _, part := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	if len(out) == 0 {
+		return defaultValue
+	}
+
+	return out
 }
 
 func getEnvBool(key string, defaultValue bool) bool {

@@ -46,9 +46,12 @@ CREATE TABLE IF NOT EXISTS mpp.antrian (
     updated_by UUID
 );
 
--- No duplicate number within a service on a given day
-CREATE UNIQUE INDEX antrian_service_day_seq_key ON mpp.antrian(jenis_layanan_id, queue_date, nomor_seq);
+-- No duplicate number within an AGENCY on a given day. Queue numbers use the
+-- agency prefix (e.g. A-014) and the sequence is per-instansi/day, so the pair
+-- (instansi, day, seq) must be unique across all of that agency's services.
+CREATE UNIQUE INDEX antrian_instansi_day_seq_key ON mpp.antrian(instansi_id, queue_date, nomor_seq);
 
+-- Waiting stream is still read per service (one stream per jenis_layanan)
 CREATE INDEX idx_antrian_service_status_seq ON mpp.antrian(jenis_layanan_id, status, nomor_seq);
 CREATE INDEX idx_antrian_loket_status ON mpp.antrian(loket_id, status);
 CREATE INDEX idx_antrian_instansi_date ON mpp.antrian(instansi_id, queue_date);

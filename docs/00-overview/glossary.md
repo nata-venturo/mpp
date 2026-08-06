@@ -4,7 +4,7 @@ Istilah domain yang dipakai konsisten di seluruh dokumen dan kode.
 
 | Istilah (ID)          | Term (EN)                | Definisi                                                                                          |
 |-----------------------|--------------------------|--------------------------------------------------------------------------------------------------|
-| Instansi              | Agency                   | Lembaga penyelenggara layanan di MPP (Dukcapil, Imigrasi, dll.). Punya **prefix** huruf (A/B/C…). |
+| Instansi              | Agency                   | Lembaga penyelenggara layanan di MPP (Dukcapil, Imigrasi, dll.). Punya **prefix** 1–4 huruf (kolom `VARCHAR(4)`), umumnya satu huruf (A/B/C…). |
 | Jenis layanan         | Service (type)           | Layanan spesifik dalam satu instansi; membawa **syarat dokumen** & **estimasi durasi**.          |
 | Katalog dua tingkat   | Two-level catalog        | Instansi → Jenis layanan. Nomor antrian mengikuti prefix instansi.                               |
 | Loket                 | Counter                  | Meja pelayanan fisik. Satu instansi bisa punya banyak loket.                                      |
@@ -22,7 +22,7 @@ Istilah domain yang dipakai konsisten di seluruh dokumen dan kode.
 | Petugas loket         | Counter operator         | Petugas yang memanggil & melayani warga di loket.                                                 |
 | Supervisor            | Supervisor               | Pemantau performa loket/antrean satu instansi.                                                    |
 | Admin                 | Admin                    | Pengelola master data, konfigurasi, dan laporan lintas instansi.                                  |
-| Second service        | Second service           | Layanan lanjutan otomatis untuk warga yang sama tanpa daftar ulang (status `QUEUED_NEXT`).        |
+| Second service        | Second service           | Layanan lanjutan untuk warga yang sama tanpa daftar ulang. Antrian asal → `QUEUED_NEXT` (terminal); antrian anak baru dibuat di `WAITING` layanan tujuan (`parent_antrian_id`).  |
 | Panggil 3× lalu skip  | Call-3×-then-skip        | Nomor dipanggil maksimal 3 kali; jika tak hadir → di-skip.                                        |
 | Alokasi idle-terlama  | Idle-longest allocation  | Nomor berikutnya diarahkan ke loket yang paling lama menganggur (round-robin adil).              |
 | Mode FIFO             | FIFO mode                | Urutan murni berdasarkan waktu masuk antrean.                                                     |

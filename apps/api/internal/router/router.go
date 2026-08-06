@@ -18,6 +18,18 @@ import (
 	"github.com/ndollem/mpp/apps/api/internal/modules/core/user"
 	userRepo "github.com/ndollem/mpp/apps/api/internal/modules/core/user/repository"
 
+	// MPP modules
+	"github.com/ndollem/mpp/apps/api/internal/modules/mpp/antrian"
+	"github.com/ndollem/mpp/apps/api/internal/modules/mpp/booking"
+	"github.com/ndollem/mpp/apps/api/internal/modules/mpp/checkin"
+	"github.com/ndollem/mpp/apps/api/internal/modules/mpp/display"
+	mppconfig "github.com/ndollem/mpp/apps/api/internal/modules/mpp/config"
+	"github.com/ndollem/mpp/apps/api/internal/modules/mpp/instansi"
+	"github.com/ndollem/mpp/apps/api/internal/modules/mpp/kuota"
+	"github.com/ndollem/mpp/apps/api/internal/modules/mpp/loket"
+	"github.com/ndollem/mpp/apps/api/internal/modules/mpp/loket_ops"
+	"github.com/ndollem/mpp/apps/api/internal/modules/mpp/ws"
+
 	"github.com/ndollem/mpp/apps/api/internal/shared/audit"
 	"github.com/ndollem/mpp/apps/api/internal/shared/authz"
 	sharedRedis "github.com/ndollem/mpp/apps/api/internal/shared/redis"
@@ -57,15 +69,25 @@ func Setup(router *gin.Engine, db *pgxpool.Pool, cfg *config.Config) {
 	// Recovery middleware with Zap (handles panics)
 	router.Use(ginzap.RecoveryWithZap(log, true))
 
-	// CORS middleware configuration
+	// CORS middleware configuration.
+	//
+	// Every header the frontend actually sends must be listed in
+	// AllowHeaders: a browser preflights any request carrying a custom
+	// header, and an omission surfaces as a 403 on the OPTIONS call —
+	// before the handler runs, so the route itself looks broken.
+	// X-Company-Slug rides on every FE request; X-API-Key on kiosk/TV ones.
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://localhost:3001", "http://localhost:8081", "https://app.tuai.id", "https://jesuit.venturo.pro", "https://skeleton.venturo.id"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-API-Key"},
+		AllowOrigins: cfg.Server.AllowedOrigins,
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders: []string{
+			"Origin", "Content-Type", "Accept",
+			"Authorization", "X-API-Key", "X-Company-Slug", "X-Client-Slug",
+		},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+	log.Info("CORS configured", zap.Strings("allowed_origins", cfg.Server.AllowedOrigins))
 
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
@@ -199,6 +221,58 @@ func Setup(router *gin.Engine, db *pgxpool.Pool, cfg *config.Config) {
 		// and super_admin CRUD nested under /admin/clients/:client_id.
 		translationOverridesModule := translation_overrides.Initialize(db, clientModule.Service)
 		translationOverridesModule.SetupRoutes(coreV1)
+	}
+
+	// MPP v1 routes — the queue domain. Public catalog/registration reads
+	// carry no JWTAuth(); staff and device routes add JWTAuth() +
+	// RequirePermission (the same middleware handles X-API-Key devices).
+	mppV1 := router.Group("/mpp/v1")
+	{
+		instansiModule := instansi.Initialize(db, cfg.MPP.CompanyID)
+		instansiModule.SetupRoutes(mppV1)
+
+		loketModule := loket.Initialize(db, cfg.MPP.CompanyID)
+		loketModule.SetupRoutes(mppV1)
+
+		// Config has no routes of its own — it is the system_config reader
+		// the queue engine consults (number format, QR window, TTS text).
+		mppConfigModule := mppconfig.Initialize(db, cfg.MPP.Location)
+
+		kuotaModule := kuota.Initialize(db, cfg.MPP.CompanyID, cfg.MPP.Location)
+		kuotaModule.SetupRoutes(mppV1)
+
+		bookingModule := booking.Initialize(db, cfg.MPP.CompanyID, cfg.MPP.Location,
+			instansiModule.Repository, kuotaModule.Repository, mppConfigModule.Service)
+		bookingModule.SetupRoutes(mppV1)
+
+		antrianModule := antrian.Initialize(db, redisClient, cfg.MPP.CompanyID, cfg.MPP.Location,
+			instansiModule.Repository, loketModule.Repository, bookingModule.Repository,
+			mppConfigModule.Service)
+		antrianModule.SetupRoutes(mppV1)
+
+		// Check-in owns no repository: it drives the booking repo (token
+		// lookup + status guard) and the antrian service (numbering) in
+		// one transaction.
+		checkinModule := checkin.Initialize(bookingModule.Repository, antrianModule.Service, cfg.MPP.Location)
+		checkinModule.SetupRoutes(mppV1)
+
+		// Realtime hub. Started before the modules that publish to it so
+		// no transition is issued into a nil hub.
+		wsModule := ws.Initialize(context.Background(), redisClient)
+		wsModule.SetupRoutes(mppV1)
+
+		loketOpsModule := loket_ops.Initialize(db, cfg.MPP.CompanyID,
+			loketModule.Repository, antrianModule.Repository, instansiModule.Repository,
+			antrianModule.Service, mppConfigModule.Service, wsModule.Hub)
+		loketOpsModule.SetupRoutes(mppV1)
+
+		displayModule := display.Initialize(db, instansiModule.Repository,
+			antrianModule.Service, mppConfigModule.Service)
+		displayModule.SetupRoutes(mppV1)
+
+		// The hub needs the display module to answer a subscribe with a
+		// snapshot; the display module needed the hub's channels first.
+		wsModule.Hub.SetSnapshotProvider(displayModule.Service)
 	}
 
 	// Shared audit module (polymorphic, used by any feature that wants

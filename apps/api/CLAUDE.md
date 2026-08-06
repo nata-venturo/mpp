@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Tuai Backend is a multi-tenant business management platform built with Go 1.25, Gin web framework, and PostgreSQL. It features a modular monolithic architecture with role-based access control (RBAC).
+Tuai Backend is a multi-tenant business management platform built with Go 1.26, Gin web framework, and PostgreSQL. It features a modular monolithic architecture with role-based access control (RBAC).
 
 ## Development Commands
 
@@ -74,6 +74,13 @@ Each `main.{module}.go` exports:
 Routes are organized by domain and version:
 
 - **Core**: `/core/v1/...` (auth, users, companies, roles, branches, approvals, translation overrides, API keys)
+- **MPP**: `/mpp/v1/...` (queue domain: catalog, availability, booking, check-in, walk-in, queue, loket ops, display, `GET /ws`)
+
+MPP public reads (catalog, availability, booking) carry **no** `JWTAuth()`. Staff and
+device routes both use `JWTAuth()` — it checks `X-API-Key` first and falls back to the
+`Authorization: Bearer` JWT, so kiosk/TV devices need no separate middleware. Queue
+transitions are guarded by `mpp.antrian:update`; do not invent call/skip verbs (the
+permission-level vocabulary only expands to CRUD actions).
 
 All modules are initialized in [internal/router/router.go](internal/router/router.go).
 

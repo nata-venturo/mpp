@@ -1,4 +1,4 @@
-.PHONY: help migrate-up migrate-down migrate-create migrate-force migrate-version seed seed-core seed-mpp db-setup db-reset dev build run
+.PHONY: help migrate-up migrate-down migrate-create migrate-force migrate-version seed seed-core seed-mpp db-setup db-reset dev build run test test-mpp
 
 help:
 	@echo "Available commands:"
@@ -23,6 +23,10 @@ help:
 	@echo "Setup commands:"
 	@echo "  make db-setup                - Run migrations + seeders (fresh setup)"
 	@echo "  make db-reset                - Drop, migrate, and seed database"
+	@echo ""
+	@echo "Tests:"
+	@echo "  make test                    - Run all Go tests (serialized)"
+	@echo "  make test-mpp                - Run MPP tests against the dev database"
 
 # Database migrations
 DB_URL=postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)
@@ -119,4 +123,22 @@ run:
 
 dev:
 	@echo "🔥 Starting development server with hot reload..."
-	@~/go/bin/air
+	@air
+
+# Tests
+#
+# MPP integration tests share ONE database. Running packages in parallel
+# (go test's default) lets one package's TRUNCATE land in the middle of
+# another's transaction — deadlocks and phantom failures that have
+# nothing to do with the code. -p 1 serializes packages.
+#
+# TEST_DATABASE_URL is what opts the integration tests in; without it
+# they skip, so `go test ./...` stays green on a machine with no infra.
+test-mpp:
+	@echo "🧪 Running MPP tests..."
+	@TEST_DATABASE_URL="postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)" \
+		go test -p 1 ./internal/modules/mpp/... -timeout 300s
+
+test:
+	@echo "🧪 Running all tests..."
+	@go test -p 1 ./...

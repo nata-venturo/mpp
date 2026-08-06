@@ -91,3 +91,40 @@ INSERT INTO core.roles (id, code, name, description, permissions, is_system, is_
     TRUE
 )
 ON CONFLICT DO NOTHING;
+
+-- =====================================================
+-- DEVICE ROLES (kiosk / TV)
+-- =====================================================
+-- An API key's effective permission set is the INTERSECTION of the key's
+-- scoped_permissions and the OWNING USER's permissions (see
+-- ApiKey.GetEffectivePermissions). A device key owned by a user with no
+-- MPP permissions therefore resolves to an empty set — hence these two
+-- narrow roles, assigned to the dedicated device users in 009_device_keys.
+INSERT INTO core.roles (id, code, name, description, permissions, is_system, is_active) VALUES
+(
+    'a0000000-0000-0000-0000-000000000011',
+    'mpp_device_kiosk',
+    'MPP Kiosk Device',
+    'Self-service kiosk: scan a QR to check in, register walk-ins, read the catalog.',
+    '{
+        "mpp.instansi": "viewer",
+        "mpp.layanan": "viewer",
+        "mpp.booking": "editor",
+        "mpp.checkin": "editor"
+    }'::jsonb,
+    TRUE,
+    TRUE
+),
+(
+    'a0000000-0000-0000-0000-000000000012',
+    'mpp_device_tv',
+    'MPP TV Display Device',
+    'Read-only display: current call + waiting stream for one agency.',
+    '{
+        "mpp.display": "viewer",
+        "mpp.queue": "viewer"
+    }'::jsonb,
+    TRUE,
+    TRUE
+)
+ON CONFLICT DO NOTHING;

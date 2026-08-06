@@ -6,11 +6,15 @@ Notasi: `BR-<n>`. Aturan ini mengikat perilaku engine antrian & registrasi.
 
 - **BR-01 — Prefix instansi.** Nomor antrean memakai prefix huruf instansi + urutan,
   contoh `A-014` (Dukcapil = A). Prefix unik per tenant.
-- **BR-02 — Satu antrean per jenis layanan.** Setiap jenis layanan punya satu aliran
-  antrean (single stream); nomor berurutan dalam layanan tersebut per hari.
+- **BR-02 — Satu aliran antrean per jenis layanan; penomoran per instansi.** Setiap jenis
+  layanan punya satu aliran antrean (single stream) untuk dipanggil terpisah. Namun
+  **nomor berurutan per instansi per hari** (bukan per layanan): karena nomor memakai
+  prefix instansi (`A-014`), seluruh layanan di bawah satu instansi berbagi satu deret
+  nomor (`A-001`, `A-002`, …). Unik pada (`instansi_id`, `queue_date`, `nomor_seq`).
 - **BR-03 — Reset harian 00:00.** Counter nomor kembali ke awal setiap tengah malam.
-  Item yang masih menunggu dari hari sebelumnya ditutup sesuai kebijakan operasional
-  (default: dianggap kedaluwarsa; dapat diubah admin).
+  Antrian sisa (`WAITING`/`CALLED`/`HOLD`) dari hari sebelumnya **default di-`CANCELLED`**
+  (tidak ada status `EXPIRED` pada antrian — `EXPIRED` hanya milik `booking`). Perilaku
+  dapat diubah admin lewat `system_config` key `daily_reset`.
 - **BR-04 — Format nomor dikonfigurasi.** Pola nomor (mis. `A-014` vs `A014`) diatur
   di konfigurasi sistem.
 
@@ -76,6 +80,21 @@ Notasi: `BR-<n>`. Aturan ini mengikat perilaku engine antrian & registrasi.
   aktif, pemohon harus **lengkap** menurut FO sebelum dapat dipanggil ke loket.
 - **BR-25 — Dokumen kurang menahan antrean.** Hasil `INCOMPLETE` menahan pemohon dari
   antrean loket sampai dilengkapi; diberi catatan.
+
+## Estimasi waktu tunggu (ETA)
+
+- **BR-29 — Rumus ETA.** Untuk satu antrian pada layanan `L`:
+
+  ```
+  posisi   = jumlah antrian di depannya (status WAITING atau CALLED) pada layanan L
+  n_loket  = jumlah loket eligible untuk L yang berstatus OPEN (min. 1)
+  ETA_menit = ceil(posisi / n_loket) × estimasi_durasi_menit(L)
+  ```
+
+  Bila `n_loket = 0` (belum ada loket buka), ETA tak ditampilkan (atau "menunggu loket
+  dibuka"). ETA bersifat indikatif dan dihitung ulang saat antrean berubah (event
+  `queue.updated`). Mode Booking-prioritas memengaruhi `posisi` (booking dihitung di depan
+  walk-in).
 
 ## Operasional & audit
 

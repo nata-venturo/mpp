@@ -9,7 +9,7 @@
 | DB driver      | pgx v5 (`jackc/pgx/v5`) | **no ORM** — hand-written SQL repositories |
 | Migrations     | golang-migrate | per-module folders `migrations/<module>/`; `MODULE=` Make targets |
 | Cache/coord    | Redis (`redis/go-redis/v9`) | permission cache + queue counters/state/pub-sub |
-| Auth           | JWT (`golang-jwt/jwt/v5`) + API-key | company-scoped RBAC, `resource:level` permissions |
+| Auth           | JWT (`golang-jwt/jwt/v5`) + API-key | company-scoped RBAC; roles store `resource:level`, endpoints check `resource:action` (level expanded to fixed CRUD verbs) |
 | Config         | `os.Getenv` (+ `config.GetDSN()`) | no `.env` autoload; export via compose/air |
 | Logging        | zap | structured |
 | Email          | `gomail.v2` (`pkg/email`) | SMTP |

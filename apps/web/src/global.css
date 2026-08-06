@@ -23,6 +23,16 @@ html {
   height: 100%;
   -webkit-overflow-scrolling: touch;
 }
+/* Tidak ada halaman yang boleh menggulir ke samping. Scroll horizontal
+   selalu berarti ada elemen yang lebih lebar dari viewport (mis. tabel,
+   deretan chip, elemen 100vw di dalam wadah ber-padding) — di layar
+   sentuh itu membuat orang tersesat, dan di TV tidak akan pernah
+   terlihat sama sekali. Yang butuh lebar menggulir DI DALAM dirinya. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
 body,
 #root,
 #root__layout {
